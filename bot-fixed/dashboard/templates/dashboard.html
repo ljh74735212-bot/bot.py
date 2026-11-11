@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">대시보드</div>
+
+<!-- 통계 카드 -->
+<div class="stat-grid">
+  <div class="stat-card">
+    <div class="ico">💵</div>
+    <div class="label">월 수익</div>
+    <div class="value">{{ "{:,}".format(stats.total_revenue) }}원</div>
+  </div>
+  <div class="stat-card">
+    <div class="ico">📅</div>
+    <div class="label">오늘 수익</div>
+    <div class="value">{{ "{:,}".format(stats.today_revenue) }}원</div>
+  </div>
+  <div class="stat-card">
+    <div class="ico">👥</div>
+    <div class="label">총 사용자</div>
+    <div class="value">{{ stats.total_users }}명</div>
+  </div>
+  <div class="stat-card">
+    <div class="ico">📦</div>
+    <div class="label">총 상품</div>
+    <div class="value">{{ stats.total_products }}개</div>
+  </div>
+</div>
+
+<!-- 차트 + 최근 구매 -->
+<div class="grid-2">
+  <div class="panel">
+    <div class="panel-title">통계 그래프</div>
+    <div class="chart-filters">
+      <button class="filter-btn active" onclick="setFilter(this,'revenue')">💵 구매금액</button>
+      <button class="filter-btn" onclick="setFilter(this,'users')">👥 충전금액</button>
+      <button class="filter-btn" onclick="setFilter(this,'orders')">🛒 구매건수</button>
+    </div>
+    <div class="chart-filters">
+      <button class="filter-btn active" onclick="setRange(this,7)">7일</button>
+      <button class="filter-btn" onclick="setRange(this,14)">1달</button>
+      <button class="filter-btn" onclick="setRange(this,30)">3달</button>
+      <button class="filter-btn" onclick="setRange(this,30)">1년</button>
+    </div>
+    <canvas id="salesChart" height="180"></canvas>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">최근 구매</div>
+    {% if stats.recent_purchases %}
+      <table>
+        <thead>
+          <tr><th>유저</th><th>상품</th><th>금액</th></tr>
+        </thead>
+        <tbody>
+          {% for p in stats.recent_purchases[:6] %}
+          <tr>
+            <td style="color:var(--muted);font-size:12px">{{ p.username }}</td>
+            <td style="font-size:12px">{{ p.product }}</td>
+            <td><span class="badge badge-purple">{{ "{:,}".format(p.price) }}원</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="empty">
+        <div class="ico">🛒</div>
+        <p>최근 구매 내역이 없습니다</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 대기 중인 충전 -->
+{% if stats.pending_charges %}
+<div class="panel">
+  <div class="panel-title">⏳ 충전 대기 ({{ stats.pending_charges|length }}건)</div>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>유저 ID</th><th>입금자명</th><th>금액</th><th>요청시간</th><th>처리</th></tr>
+    </thead>
+    <tbody>
+      {% for c in stats.pending_charges %}
+      <tr>
+        <td style="font-size:11px;color:var(--muted)">{{ c.id }}</td>
+        <td style="font-size:12px">{{ c.user_id }}</td>
+        <td>{{ c.depositor_name }}</td>
+        <td><span class="badge badge-yellow">{{ "{:,}".format(c.amount) }}원</span></td>
+        <td style="font-size:11px;color:var(--muted)">{{ c.created_at[:16].replace('T',' ') }}</td>
+        <td style="display:flex;gap:6px">
+          <form method="POST" action="/api/charge/approve/{{ c.id }}">
+            <button class="btn btn-success btn-sm">승인</button>
+          </form>
+          <form method="POST" action="/api/charge/reject/{{ c.id }}">
+            <button class="btn btn-danger btn-sm">거절</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<script>
+const labels = {{ stats.chart_labels | tojson }};
+const values = {{ stats.chart_values | tojson }};
+let currentRange = 7;
+
+const ctx = document.getElementById('salesChart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: labels.slice(-currentRange),
+    datasets: [{
+      label: '매출',
+      data: values.slice(-currentRange),
+      borderColor: '#c850c0',
+      backgroundColor: 'rgba(200,80,192,0.08)',
+      borderWidth: 2,
+      pointBackgroundColor: '#c850c0',
+      pointRadius: 4,
+      tension: 0.4,
+      fill: true,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#7878a0', font: { size: 10 } }, grid: { color: '#2a2a44' } },
+      y: { ticks: { color: '#7878a0', font: { size: 10 }, callback: v => v.toLocaleString()+'원' }, grid: { color: '#2a2a44' } }
+    }
+  }
+});
+
+function setRange(btn, days) {
+  document.querySelectorAll('.chart-filters:nth-child(2) .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentRange = days;
+  chart.data.labels = labels.slice(-days);
+  chart.data.datasets[0].data = values.slice(-days);
+  chart.update();
+}
+
+function setFilter(btn, type) {
+  document.querySelectorAll('.chart-filters:nth-child(1) .filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+</script>
+{% endblock %}
