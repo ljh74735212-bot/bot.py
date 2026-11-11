@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">💰 충전 관리</div>
+
+<div class="panel">
+  <div class="panel-title">⏳ 대기 중인 충전 요청</div>
+  {% if stats.pending_charges %}
+  <table>
+    <thead>
+      <tr><th>충전 ID</th><th>유저 ID</th><th>입금자명</th><th>금액</th><th>요청시간</th><th>처리</th></tr>
+    </thead>
+    <tbody>
+      {% for c in stats.pending_charges %}
+      <tr>
+        <td style="font-size:11px;color:var(--muted);font-family:monospace">{{ c.id }}</td>
+        <td style="font-size:12px">{{ c.user_id }}</td>
+        <td style="font-weight:600">{{ c.depositor_name }}</td>
+        <td><span class="badge badge-yellow">{{ "{:,}".format(c.amount) }}원</span></td>
+        <td style="font-size:11px;color:var(--muted)">{{ c.created_at[:16].replace('T',' ') }}</td>
+        <td style="display:flex;gap:6px">
+          <form method="POST" action="/api/charge/approve/{{ c.id }}">
+            <button class="btn btn-success btn-sm">✅ 승인</button>
+          </form>
+          <form method="POST" action="/api/charge/reject/{{ c.id }}" onsubmit="return confirm('거절하시겠습니까?')">
+            <button class="btn btn-danger btn-sm">❌ 거절</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="ico">💰</div>
+    <p>대기 중인 충전 요청이 없습니다</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
