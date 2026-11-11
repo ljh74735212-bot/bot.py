@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">👥 유저 관리</div>
+
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-title">💸 잔액 직접 지급</div>
+  <form method="POST" action="/api/user/balance" style="display:flex;gap:10px;align-items:flex-end">
+    <div class="form-group" style="flex:1">
+      <label>유저 ID (디스코드)</label>
+      <input name="user_id" placeholder="123456789012345678" required>
+    </div>
+    <div class="form-group" style="flex:1">
+      <label>지급 금액 (원)</label>
+      <input name="amount" type="number" placeholder="10000" min="1" required>
+    </div>
+    <button class="btn btn-primary" style="margin-bottom:1px">지급</button>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-title">전체 유저 ({{ stats.users|length }}명)</div>
+  {% if stats.users %}
+  <table>
+    <thead>
+      <tr><th>닉네임</th><th>ID</th><th>잔액</th><th>누적구매</th><th>등급</th><th>구매수</th></tr>
+    </thead>
+    <tbody>
+      {% for u in stats.users %}
+      <tr>
+        <td style="font-weight:600">{{ u.username }}</td>
+        <td style="font-size:11px;color:var(--muted)">{{ u.id }}</td>
+        <td style="color:var(--accent);font-weight:600">{{ "{:,}".format(u.balance) }}원</td>
+        <td>{{ "{:,}".format(u.total_purchase) }}원</td>
+        <td>
+          {% if u.grade == 'VIP' %}
+            <span class="badge badge-yellow">⭐ VIP</span>
+          {% elif u.grade == '우수구매자' %}
+            <span class="badge badge-green">우수구매자</span>
+          {% elif u.grade == '구매자' %}
+            <span class="badge badge-purple">구매자</span>
+          {% else %}
+            <span class="badge" style="background:var(--card2);color:var(--muted)">일반</span>
+          {% endif %}
+        </td>
+        <td>{{ u.purchases|length }}건</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    <div class="ico">👥</div>
+    <p>등록된 유저가 없습니다</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
