@@ -7,11 +7,31 @@ DB_PATH = os.path.join(os.path.dirname(__file__), "data.json")
 
 def load_db() -> dict:
     if not os.path.exists(DB_PATH):
-        initial = {"users": {}, "products": {}, "pending_charges": {}}
+        initial = {"users": {}, "products": {}, "pending_charges": {}, "settings": {}}
         save_db(initial)
         return initial
-    with open(DB_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    data = json.load(open(DB_PATH, "r", encoding="utf-8"))
+    if "settings" not in data:
+        data["settings"] = {}
+        save_db(data)
+    return data
+
+# ── 설정 ──────────────────────────────────────────
+def get_settings() -> dict:
+    return load_db().get("settings", {})
+
+def save_settings(settings: dict):
+    db = load_db()
+    db["settings"] = settings
+    save_db(db)
+
+def get_bank_info() -> dict:
+    s = get_settings()
+    return {
+        "name": s.get("bank_name", os.getenv("BANK_NAME", "은행명 미설정")),
+        "account": s.get("bank_account", os.getenv("BANK_ACCOUNT", "계좌번호 미설정")),
+        "holder": s.get("bank_holder", os.getenv("BANK_HOLDER", "예금주 미설정")),
+    }
 
 def save_db(data: dict):
     with open(DB_PATH, "w", encoding="utf-8") as f:

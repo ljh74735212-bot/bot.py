@@ -187,9 +187,10 @@ class BankChargeModal(discord.ui.Modal, title="계좌이체 충전 요청"):
             str(interaction.user.id), amount_val, str(self.depositor_name)
         )
 
-        bank_name    = os.getenv("BANK_NAME", "은행명")
-        bank_account = os.getenv("BANK_ACCOUNT", "계좌번호")
-        bank_holder  = os.getenv("BANK_HOLDER", "예금주")
+        bank_info = db.get_bank_info()
+        bank_name    = bank_info["name"]
+        bank_account = bank_info["account"]
+        bank_holder  = bank_info["holder"]
 
         await interaction.response.send_message(
             f"✅ 충전 요청이 접수되었습니다!\n\n"
@@ -380,6 +381,37 @@ class Vending(commands.Cog):
         user["balance"] += 금액
         db.save_user(str(유저.id), user)
         await interaction.response.send_message(f"✅ <@{유저.id}>님께 **{금액:,}원** 지급 완료!")
+
+    # 계좌 설정
+    @app_commands.command(name="계좌설정", description="[관리자] 계좌 정보를 설정합니다")
+    @app_commands.describe(은행이름="예: 국민은행", 계좌번호="예: 123-456-789012", 예금주="예: 홍길동")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def set_bank(self, interaction: discord.Interaction, 은행이름: str, 계좌번호: str, 예금주: str):
+        if not is_admin(interaction):
+            return await interaction.response.send_message("❌ 권한이 없습니다.", ephemeral=True)
+        settings = db.get_settings()
+        settings["bank_name"] = 은행이름
+        settings["bank_account"] = 계좌번호
+        settings["bank_holder"] = 예금주
+        db.save_settings(settings)
+        embed = discord.Embed(title="✅ 계좌 정보 설정 완료", color=0x57F287)
+        embed.add_field(name="은행", value=은행이름, inline=True)
+        embed.add_field(name="계좌번호", value=계좌번호, inline=True)
+        embed.add_field(name="예금주", value=예금주, inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # 계좌 확인
+    @app_commands.command(name="계좌확인", description="현재 설정된 계좌 정보를 확인합니다")
+    @app_commands.guilds(discord.Object(id=GUILD_ID))
+    async def check_bank(self, interaction: discord.Interaction):
+        if not is_admin(interaction):
+            return await interaction.response.send_message("❌ 권한이 없습니다.", ephemeral=True)
+        info = db.get_bank_info()
+        embed = discord.Embed(title="🏦 현재 계좌 정보", color=0x5865F2)
+        embed.add_field(name="은행", value=info["name"], inline=True)
+        embed.add_field(name="계좌번호", value=info["account"], inline=True)
+        embed.add_field(name="예금주", value=info["holder"], inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Vending(bot))
