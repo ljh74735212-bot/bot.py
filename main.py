@@ -28,7 +28,7 @@ async def on_ready():
     if _bg_started:
         return  # 재연결 시 on_ready 가 다시 불려도 백그라운드 작업은 한 번만 시작
     _bg_started = True
-    asyncio.create_task(start_dashboard_async(bot))
+    asyncio.create_task(start_dashboard_async())
     asyncio.create_task(bankapi.poll_loop(bot))  # 웹에서 설정한 계좌조회API 자동충전
     asyncio.create_task(start_sms_server(bot))
 
