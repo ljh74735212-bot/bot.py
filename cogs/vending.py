@@ -97,7 +97,8 @@ class ProductSelect(discord.ui.Select):
         opts = (
             [discord.SelectOption(
                 label=f"{p['name']} - {p['price']:,}원",
-                description=f"재고: {'무제한' if p.get('stock',-1)==-1 else f\"{p.get('stock','?')}개\"}",
+                description="재고: {}개".format("무제한" if p.get("stock", -1) == -1 else p.get("stock", "?")),
+            
                 value=p["id"],
             ) for p in products]
             if products else [discord.SelectOption(label="상품 없음", value="none")]
