@@ -30,10 +30,7 @@ async def on_ready():
     _bg_started = True
     asyncio.create_task(start_dashboard_async(bot))
     asyncio.create_task(bankapi.poll_loop(bot))  # 웹에서 설정한 계좌조회API 자동충전
-    if not os.getenv("PORT"):
-        # $PORT가 없을 때(로컬/포트가 여러 개 열리는 호스팅)만 별도 SMS 서버 실행
-        # Render에서는 대시보드의 /sms 로 같은 포트에서 받음
-        asyncio.create_task(start_sms_server(bot))
+    asyncio.create_task(start_sms_server(bot))
 
 async def main():
     async with bot:
