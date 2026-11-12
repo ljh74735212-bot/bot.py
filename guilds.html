@@ -1,53 +1,54 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-title">🏢 서버 관리 (봇 판매)</div>
+<div class="page-title">🏢 Servers (Bot Licensing)</div>
 
 <div class="grid-2" style="grid-template-columns:1fr 300px;margin-bottom:16px">
   <div class="panel">
-    <div class="panel-title">등록된 서버 ({{ stats.guilds|length }}개)</div>
+    <div class="panel-title">Registered Servers ({{ stats.guilds|length }})</div>
     {% if stats.guilds %}
-    <table>
-      <thead><tr><th>서버명</th><th>ID</th><th>만료일</th><th>상태</th><th>관리</th></tr></thead>
-      <tbody>
-        {% for g in stats.guilds %}
-        <tr>
-          <td style="font-weight:600">{{ g.guild_name }}</td>
-          <td style="font-size:11px;color:var(--muted)">{{ g.id }}</td>
-          <td style="font-size:12px">
-            {% if g.expires_at == 'permanent' %}
-              <span class="badge badge-green">영구</span>
-            {% else %}
-              {{ g.expires_at[:10] }}
-            {% endif %}
-          </td>
-          <td>
-            {% if g.active %}<span class="badge badge-green">✅ 활성</span>
-            {% else %}<span class="badge badge-red">🔴 비활성</span>{% endif %}
-          </td>
-          <td>
-            <form method="POST" action="/api/guild/deactivate/{{ g.id }}" onsubmit="return confirm('비활성화?')">
-              <button class="btn btn-danger btn-sm">비활성화</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>ID</th><th>Expires</th><th>Status</th><th>Manage</th></tr></thead>
+        <tbody>
+          {% for g in stats.guilds %}
+          <tr>
+            <td style="font-weight:600">{{ g.guild_name }}</td>
+            <td style="font-size:11px;color:var(--muted)">{{ g.id }}</td>
+            <td style="font-size:12px">
+              {% if g.expires_at == 'permanent' %}<span class="badge badge-green">Permanent</span>
+              {% else %}{{ g.expires_at[:10] }}{% endif %}
+            </td>
+            <td>
+              {% if g.active %}<span class="badge badge-green">✅ Active</span>
+              {% else %}<span class="badge badge-red">🔴 Inactive</span>{% endif %}
+            </td>
+            <td>
+              {% if g.active %}
+              <form method="POST" action="/api/guild/deactivate/{{ g.id }}" onsubmit="return confirm('Deactivate this server?')">
+                <button type="submit" class="btn btn-danger btn-sm">Deactivate</button>
+              </form>
+              {% else %}<span style="color:var(--muted);font-size:12px">—</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% else %}
-    <div class="empty"><div class="ico">🏢</div><p>등록된 서버가 없습니다</p></div>
+    <div class="empty"><div class="ico">🏢</div><p>No servers registered</p></div>
     {% endif %}
   </div>
 
   <div class="panel">
-    <div class="panel-title">➕ 서버 등록</div>
+    <div class="panel-title">➕ Register Server</div>
     <form method="POST" action="/api/guild/register" style="display:flex;flex-direction:column;gap:12px">
-      <div class="form-group"><label>서버 ID</label><input name="guild_id" placeholder="1234567890" required></div>
-      <div class="form-group"><label>서버 이름</label><input name="guild_name" placeholder="서버 이름" required></div>
+      <div class="form-group"><label>Server ID</label><input name="guild_id" placeholder="1234567890" inputmode="numeric" required></div>
+      <div class="form-group"><label>Server name</label><input name="guild_name" placeholder="Server name" required></div>
       <div class="form-group">
-        <label>이용 기간 (일, 0=영구)</label>
+        <label>Duration (days, 0 = permanent)</label>
         <input name="days" type="number" value="30" min="0" required>
       </div>
-      <button class="btn btn-primary">서버 등록</button>
+      <button type="submit" class="btn btn-primary">Register Server</button>
     </form>
   </div>
 </div>

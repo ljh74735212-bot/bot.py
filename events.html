@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">🎁 Events</div>
+
+{% macro status_badge(st) -%}
+  {%- if st == 'active' %}<span class="badge badge-green">● Live</span>
+  {%- elif st == 'scheduled' %}<span class="badge badge-purple">Scheduled</span>
+  {%- elif st == 'paused' %}<span class="badge badge-yellow">Paused</span>
+  {%- elif st == 'full' %}<span class="badge badge-red">Sold out</span>
+  {%- else %}<span class="badge badge-red">Expired</span>{% endif -%}
+{%- endmacro %}
+
+{# ───────── Discount coupons ───────── #}
+<div class="grid-2" style="grid-template-columns:1fr 320px">
+  <div class="panel">
+    <div class="panel-title">🎟️ Discount Coupons ({{ coupons|length }})</div>
+    {% if coupons %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Code</th><th>Server</th><th>Discount</th><th>Used</th><th>Rules</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for c in coupons %}
+          <tr>
+            <td style="font-family:monospace;font-weight:700;color:var(--accent)">{{ c.code }}</td>
+            <td style="font-size:12px">{{ c.guild_name }}</td>
+            <td>{% if c.kind == 'percent' %}{{ c.value }}% off{% else %}{{ c.value|won }} off{% endif %}</td>
+            <td>{{ c.used_count }}{% if c.max_uses %} / {{ c.max_uses }}{% else %} / ∞{% endif %}</td>
+            <td style="font-size:11px;color:var(--muted)">
+              {% if c.per_user %}{{ c.per_user }}× per user{% else %}Unlimited per user{% endif %}
+              {% if c.min_purchase %}<br>Min {{ c.min_purchase|won }}{% endif %}
+              {% if c.expires_at %}<br>Ends {{ c.expires_at[:16].replace('T',' ') }}{% endif %}
+            </td>
+            <td>{{ status_badge(c.status) }}</td>
+            <td>
+              <div class="actions">
+                <form method="POST" action="/api/coupon/toggle/{{ c.guild_id }}/{{ c.code|urlencode }}">
+                  <button type="submit" class="btn btn-sm btn-success">{% if c.active %}Pause{% else %}Resume{% endif %}</button>
+                </form>
+                <form method="POST" action="/api/coupon/delete/{{ c.guild_id }}/{{ c.code|urlencode }}" onsubmit="return confirm('Delete this coupon?')">
+                  <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><div class="ico">🎟️</div><p>No coupons yet</p></div>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">➕ New Coupon</div>
+    {% if guilds %}
+    <form method="POST" action="/api/coupon/add" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group"><label>Server</label>
+        <select name="guild_id" required>{% for g in guilds %}<option value="{{ g.id }}">{{ g.guild_name }}</option>{% endfor %}</select>
+      </div>
+      <div class="form-group"><label>Code (leave blank to auto-generate)</label><input name="code" placeholder="OPEN10" maxlength="32"></div>
+      <div class="form-group"><label>Discount type</label>
+        <select name="kind" id="couponKind"><option value="percent">Percent (%)</option><option value="fixed">Fixed amount (₩)</option></select>
+      </div>
+      <div class="form-group"><label id="couponValueLabel">Discount (%)</label><input name="value" id="couponValue" type="number" min="1" max="100" value="10" required></div>
+      <div class="form-group"><label>Total uses (0 = unlimited, first-come)</label><input name="max_uses" type="number" min="0" value="0"></div>
+      <div class="form-group"><label>Uses per user (0 = unlimited)</label><input name="per_user" type="number" min="0" value="1"></div>
+      <div class="form-group"><label>Minimum purchase (₩)</label><input name="min_purchase" type="number" min="0" value="0"></div>
+      <div class="form-group"><label>Expires (optional)</label><input name="expires_at" type="datetime-local"></div>
+      <button type="submit" class="btn btn-primary">Create Coupon</button>
+    </form>
+    {% else %}
+    <div class="empty"><p>Register a server under <a href="/guilds" style="color:var(--accent)">Servers</a> first.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{# ───────── Top-up events ───────── #}
+<div class="grid-2" style="grid-template-columns:1fr 320px;margin-top:0">
+  <div class="panel">
+    <div class="panel-title">⚡ Top-up Events ({{ events|length }})</div>
+    {% if events %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Event</th><th>Server</th><th>Bonus</th><th>Claimed</th><th>Rules</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for e in events %}
+          <tr>
+            <td style="font-weight:600">{{ e.name }}</td>
+            <td style="font-size:12px">{{ e.guild_name }}</td>
+            <td><span class="badge badge-purple">{{ '%g'|format(e.multiplier) }}× top-up</span></td>
+            <td>{{ e.claimed_by|length }}{% if e.max_winners %} / {{ e.max_winners }}{% else %} / ∞{% endif %}</td>
+            <td style="font-size:11px;color:var(--muted)">
+              {% if e.min_amount %}Min {{ e.min_amount|won }}<br>{% endif %}
+              {% if e.max_bonus %}Bonus cap {{ e.max_bonus|won }}<br>{% endif %}
+              {% if e.start_at %}From {{ e.start_at[:16].replace('T',' ') }}<br>{% endif %}
+              {% if e.end_at %}Until {{ e.end_at[:16].replace('T',' ') }}{% endif %}
+              {% if not (e.min_amount or e.max_bonus or e.start_at or e.end_at) %}1× per user{% endif %}
+            </td>
+            <td>{{ status_badge(e.status) }}</td>
+            <td>
+              <div class="actions">
+                <form method="POST" action="/api/event/toggle/{{ e.guild_id }}/{{ e.id }}">
+                  <button type="submit" class="btn btn-sm btn-success">{% if e.active %}Pause{% else %}Resume{% endif %}</button>
+                </form>
+                <form method="POST" action="/api/event/delete/{{ e.guild_id }}/{{ e.id }}" onsubmit="return confirm('Delete this event?')">
+                  <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><div class="ico">⚡</div><p>No top-up events yet</p></div>
+    {% endif %}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">➕ New Top-up Event</div>
+    {% if guilds %}
+    <form method="POST" action="/api/event/add" style="display:flex;flex-direction:column;gap:12px">
+      <div class="form-group"><label>Server</label>
+        <select name="guild_id" required>{% for g in guilds %}<option value="{{ g.id }}">{{ g.guild_name }}</option>{% endfor %}</select>
+      </div>
+      <div class="form-group"><label>Event name</label><input name="name" placeholder="Launch Day 2× Top-up" required></div>
+      <div class="form-group"><label>Multiplier (2 = double the top-up)</label><input name="multiplier" type="number" step="0.1" min="1.1" max="10" value="2" required></div>
+      <div class="form-group"><label>First-come winners (0 = unlimited)</label><input name="max_winners" type="number" min="0" value="10"></div>
+      <div class="form-group"><label>Minimum top-up (₩)</label><input name="min_amount" type="number" min="0" value="0"></div>
+      <div class="form-group"><label>Max bonus per user (₩, 0 = no cap)</label><input name="max_bonus" type="number" min="0" value="0"></div>
+      <div class="form-group"><label>Starts (optional)</label><input name="start_at" type="datetime-local"></div>
+      <div class="form-group"><label>Ends (optional)</label><input name="end_at" type="datetime-local"></div>
+      <button type="submit" class="btn btn-primary">Create Event</button>
+    </form>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px">Each user can claim an event once. Spots are taken in the order top-ups are approved.</p>
+    {% else %}
+    <div class="empty"><p>Register a server under <a href="/guilds" style="color:var(--accent)">Servers</a> first.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+(function () {
+  var kind = document.getElementById('couponKind');
+  if (!kind) return;
+  var label = document.getElementById('couponValueLabel');
+  var value = document.getElementById('couponValue');
+  kind.addEventListener('change', function () {
+    if (kind.value === 'percent') {
+      label.textContent = 'Discount (%)'; value.max = 100; value.value = 10;
+    } else {
+      label.textContent = 'Discount (₩)'; value.removeAttribute('max'); value.value = 1000;
+    }
+  });
+})();
+</script>
+{% endblock %}

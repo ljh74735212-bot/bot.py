@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>관리자 대시보드</title>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>NIGHT Service · Premium Seller</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -22,9 +22,9 @@
       --warn: #f7b731;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Noto Sans KR', sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+    body { font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
 
-    /* 사이드바 */
+    
     .sidebar {
       width: 200px; min-height: 100vh; background: var(--sidebar);
       border-right: 1px solid var(--border); display: flex; flex-direction: column;
@@ -62,11 +62,11 @@
     }
     .sidebar-footer a:hover { color: var(--danger); background: rgba(240,62,62,.1); }
 
-    /* 메인 */
+    
     .main { margin-left: 200px; flex: 1; padding: 24px; min-height: 100vh; }
     .page-title { font-size: 22px; font-weight: 700; margin-bottom: 24px; }
 
-    /* 카드 그리드 */
+    
     .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
     .stat-card {
       background: var(--card); border: 1px solid var(--border);
@@ -77,7 +77,7 @@
     .stat-card .label { font-size: 11px; color: var(--muted); }
     .stat-card .value { font-size: 20px; font-weight: 700; color: var(--accent); }
 
-    /* 차트 + 최근 구매 */
+    
     .grid-2 { display: grid; grid-template-columns: 1fr 340px; gap: 14px; margin-bottom: 24px; }
     .panel {
       background: var(--card); border: 1px solid var(--border);
@@ -85,7 +85,7 @@
     }
     .panel-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; }
 
-    /* 차트 필터 */
+    
     .chart-filters { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
     .filter-btn {
       padding: 4px 10px; border-radius: 20px; border: 1px solid var(--border);
@@ -94,14 +94,14 @@
     }
     .filter-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-    /* 테이블 */
+    
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th { text-align: left; padding: 10px 12px; color: var(--muted); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 11px; }
     td { padding: 10px 12px; border-bottom: 1px solid var(--border); }
     tr:last-child td { border-bottom: none; }
     tr:hover td { background: var(--card2); }
 
-    /* 뱃지 */
+    
     .badge {
       display: inline-block; padding: 2px 8px; border-radius: 20px;
       font-size: 11px; font-weight: 600;
@@ -111,7 +111,7 @@
     .badge-yellow { background: rgba(247,183,49,.15); color: var(--warn); }
     .badge-purple { background: rgba(200,80,192,.15); color: var(--accent); }
 
-    /* 버튼 */
+    
     .btn {
       padding: 7px 14px; border-radius: 8px; border: none;
       font-size: 12px; font-weight: 600; cursor: pointer;
@@ -125,7 +125,7 @@
     .btn-danger:hover { background: var(--danger); color: #fff; }
     .btn-sm { padding: 4px 10px; font-size: 11px; }
 
-    /* 폼 */
+    
     .form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
     .form-group.full { grid-column: 1 / -1; }
@@ -138,62 +138,59 @@
     input:focus, select:focus, textarea:focus { border-color: var(--accent); }
     textarea { resize: vertical; min-height: 60px; }
 
-    /* 빈 상태 */
+    
     .empty { text-align: center; padding: 40px; color: var(--muted); }
     .empty .ico { font-size: 36px; margin-bottom: 10px; }
     .empty p { font-size: 13px; }
 
-    /* 반응형 */
+    
     @media (max-width: 900px) {
       .stat-grid { grid-template-columns: repeat(2, 1fr); }
       .grid-2 { grid-template-columns: 1fr; }
     }
-  </style>
+  
+    .sidebar-logo .tag { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }
+    .toast { padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+    .toast.ok  { background: rgba(62,207,142,.12); border: 1px solid rgba(62,207,142,.35); color: var(--success); }
+    .toast.err { background: rgba(240,62,62,.12);  border: 1px solid rgba(240,62,62,.35);  color: var(--danger); }
+    .actions { display: flex; gap: 6px; }
+    .actions form { margin: 0; }
+    .table-wrap { overflow-x: auto; }
+    @media (max-width: 700px) {
+      .sidebar { position: static; width: 100%; min-height: 0; flex-direction: row; flex-wrap: wrap; }
+      .sidebar-nav { display: flex; flex-wrap: wrap; padding: 4px; }
+      .nav-label, .sidebar-footer { display: none; }
+      .nav-item { width: auto; padding: 8px 10px; }
+      body { flex-direction: column; }
+      .main { margin-left: 0; padding: 16px; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+</style>
 </head>
 <body>
   <nav class="sidebar">
     <div class="sidebar-logo">
       <div class="icon">⚡</div>
-      <div class="name">Premium Seller</div>
+      <div class="name">NIGHT Service</div>
+      <div class="tag">Premium Seller</div>
     </div>
     <div class="sidebar-nav">
-      <div class="nav-label">메뉴</div>
-      <a href="/" class="nav-item {% if page=='dashboard' %}active{% endif %}">
-        <span class="ico">📊</span> 대시보드
-      </a>
-      <a href="/products" class="nav-item {% if page=='products' %}active{% endif %}">
-        <span class="ico">📦</span> 제품 관리
-      </a>
-      <a href="/products#add" class="nav-item">
-        <span class="ico">➕</span> 카테고리 관리
-      </a>
-      <a href="/charges" class="nav-item {% if page=='charges' %}active{% endif %}">
-        <span class="ico">💰</span> 충전수단 관리
-      </a>
-      <a href="/users" class="nav-item {% if page=='users' %}active{% endif %}">
-        <span class="ico">👥</span> 유저 관리
-      </a>
-      <a href="/users" class="nav-item">
-        <span class="ico">⭐</span> 등급 관리
-      </a>
-      <a href="/charges" class="nav-item">
-        <span class="ico">🏷️</span> 할인 관리
-      </a>
-      <a href="/" class="nav-item">
-        <span class="ico">📋</span> 로그
-      </a>
-      <a href="/guilds" class="nav-item {% if page=='guilds' %}active{% endif %}">
-        <span class="ico">🏢</span> 서버 관리
-      </a>
-      <a href="/settings" class="nav-item {% if page=='settings' %}active{% endif %}">
-        <span class="ico">⚙️</span> 설정
-      </a>
+      <div class="nav-label">MENU</div>
+      <a href="/" class="nav-item {% if page=='dashboard' %}active{% endif %}"><span class="ico">📊</span> Dashboard</a>
+      <a href="/products" class="nav-item {% if page=='products' %}active{% endif %}"><span class="ico">📦</span> Products</a>
+      <a href="/charges" class="nav-item {% if page=='charges' %}active{% endif %}"><span class="ico">💰</span> Charges</a>
+      <a href="/users" class="nav-item {% if page=='users' %}active{% endif %}"><span class="ico">👥</span> Users</a>
+      <a href="/events" class="nav-item {% if page=='events' %}active{% endif %}"><span class="ico">🎁</span> Events</a>
+      <a href="/guilds" class="nav-item {% if page=='guilds' %}active{% endif %}"><span class="ico">🏢</span> Servers</a>
+      <a href="/settings" class="nav-item {% if page=='settings' %}active{% endif %}"><span class="ico">⚙️</span> Settings</a>
     </div>
     <div class="sidebar-footer">
-      <a href="/logout">↩ 로그아웃</a>
+      <a href="/logout">↩ Log out</a>
     </div>
   </nav>
   <main class="main">
+    {% if msg %}<div class="toast ok">✅ {{ msg }}</div>{% endif %}
+    {% if err %}<div class="toast err">⚠️ {{ err }}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

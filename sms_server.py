@@ -8,7 +8,7 @@ import asyncio
 from aiohttp import web
 import database as db
 
-WEBHOOK_SECRET = os.getenv("SMS_WEBHOOK_SECRET", "secret123")
+WEBHOOK_SECRET = os.getenv("SMS_WEBHOOK_SECRET", "")  # 비어 있으면 모든 요청을 거부 (보안)
 SMS_PORT = int(os.getenv("SMS_PORT", 3000))
 
 BANK_PATTERNS = [
@@ -41,35 +41,22 @@ def parse_sms(message: str):
     return None
 
 def find_charge_in_guild(guild_id: str, depositor: str, amount: int):
-    pending = db.get_pending_charges(guild_id)
-    for c in pending:
-        if c["depositor_name"] == depositor and c["amount"] == amount:
-            return c
-    for c in pending:
-        if c["depositor_name"] == depositor:
-            return c
-    by_amount = [c for c in pending if c["amount"] == amount]
-    if len(by_amount) == 1:
-        return by_amount[0]
+    """입금액이 정확히 같은 요청만 후보로 인정한다 (이름만 같고 금액이 다르면 절대 승인 X)."""
+    candidates = [c for c in db.get_pending_charges(guild_id) if c["amount"] == amount]
+    if not candidates:
+        return None
+    same_name = [c for c in candidates if c["depositor_name"] == depositor]
+    if same_name:
+        return same_name[0]          # 가장 오래된 요청부터
+    if len(candidates) == 1:
+        return candidates[0]         # 문자에서 이름을 못 읽은 경우: 같은 금액 요청이 딱 하나일 때만
     return None
 
-async def sms_webhook(request: web.Request, bot):
-    secret = request.headers.get("x-webhook-secret", "")
-    if secret != WEBHOOK_SECRET:
-        return web.json_response({"error": "Unauthorized"}, status=401)
-
-    try:
-        data = await request.post()
-    except:
-        data = {}
-
-    message = data.get("message") or data.get("text") or data.get("sms") or ""
-    if not message:
-        return web.json_response({"error": "No message"}, status=400)
-
+async def handle_sms(bot, message: str) -> dict:
+    """입금 문자 1건 처리 (aiohttp 서버와 대시보드의 /sms 둘 다 이걸 사용)"""
     parsed = parse_sms(message)
     if not parsed:
-        return web.json_response({"status": "ignored"})
+        return {"status": "ignored"}
 
     print(f"💰 입금 감지: {parsed['depositor_name']} / {parsed['amount']}원")
 
@@ -79,25 +66,44 @@ async def sms_webhook(request: web.Request, bot):
     for g in guilds:
         if not db.is_guild_active(g["id"]):
             continue
+        if not db.get_settings(g["id"]).get("auto_charge", True):
+            continue  # 웹사이트 설정에서 자동충전을 끈 서버 → 관리자 버튼으로 수동 승인
         charge = find_charge_in_guild(g["id"], parsed["depositor_name"], parsed["amount"])
         if not charge:
             continue
         result = db.approve_charge(g["id"], charge["id"])
         if result:
             matched = True
-            await send_dm(bot, charge["user_id"], charge["amount"], parsed["bank"])
-            await notify_admin_guild(bot, g["id"], charge, parsed)
+            await send_dm(bot, charge["user_id"], charge["amount"], parsed["bank"], result)
+            await notify_admin_guild(bot, g["id"], charge, parsed, result)
             print(f"✅ 자동충전: 서버 {g['id']} / 유저 {charge['user_id']} / {charge['amount']}원")
 
     if not matched:
         print(f"⚠️ 매칭 실패: {parsed['depositor_name']} {parsed['amount']}원")
 
-    return web.json_response({"status": "success" if matched else "no_match"})
+    return {"status": "success" if matched else "no_match"}
+
+async def sms_webhook(request: web.Request, bot):
+    if not WEBHOOK_SECRET:
+        return web.json_response({"error": "SMS_WEBHOOK_SECRET not configured"}, status=503)
+    if request.headers.get("x-webhook-secret", "") != WEBHOOK_SECRET:
+        return web.json_response({"error": "Unauthorized"}, status=401)
+
+    try:
+        data = await request.post()
+    except Exception:
+        data = {}
+
+    message = data.get("message") or data.get("text") or data.get("sms") or ""
+    if not message:
+        return web.json_response({"error": "No message"}, status=400)
+
+    return web.json_response(await handle_sms(bot, message))
 
 async def health(_):
     return web.json_response({"status": "ok"})
 
-async def send_dm(bot, user_id: str, amount: int, bank: str):
+async def send_dm(bot, user_id: str, amount: int, bank: str, result: dict = None):
     try:
         user = await bot.fetch_user(int(user_id))
         await user.send(
@@ -105,11 +111,12 @@ async def send_dm(bot, user_id: str, amount: int, bank: str):
             f"💰 금액: **{amount:,}원**\n"
             f"🏦 은행: {bank}\n"
             f"입금이 확인되어 자동으로 충전되었습니다."
+            + (f"\n🎉 이벤트 **{result['event_name']}** 보너스 **+{result['bonus']:,}원** 지급!" if result and result.get("bonus") else "")
         )
     except Exception as e:
         print(f"DM 실패: {e}")
 
-async def notify_admin_guild(bot, guild_id: str, charge, parsed):
+async def notify_admin_guild(bot, guild_id: str, charge, parsed, result: dict = None):
     settings = db.get_settings(guild_id)
     ch_id = settings.get("admin_channel_id")
     if not ch_id:
@@ -121,6 +128,7 @@ async def notify_admin_guild(bot, guild_id: str, charge, parsed):
             f"유저: <@{charge['user_id']}>\n"
             f"금액: **{parsed['amount']:,}원** ({parsed['bank']})\n"
             f"입금자: {parsed['depositor_name']}"
+            + (f"\n🎉 이벤트 보너스 +{result['bonus']:,}원 ({result['event_name']})" if result and result.get("bonus") else "")
         )
     except Exception as e:
         print(f"관리자 알림 실패: {e}")
