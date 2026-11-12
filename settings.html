@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-title">⚙️ 설정</div>
+
+<div style="display:flex;flex-direction:column;gap:16px">
+
+  {% for g in guilds %}
+  {% set s = settings_map[g.id] %}
+  <div class="panel">
+    <div class="panel-title" style="display:flex;align-items:center;gap:8px">
+      🏢 {{ g.guild_name }}
+      {% if g.active %}<span class="badge badge-green">활성</span>{% else %}<span class="badge badge-red">비활성</span>{% endif %}
+    </div>
+
+    <div class="grid-2" style="grid-template-columns:1fr 1fr;gap:16px;margin-top:0">
+
+      <!-- 계좌 설정 -->
+      <form method="POST" action="/api/settings/bank/{{ g.id }}" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px">🏦 계좌 정보</div>
+        <div class="form-group">
+          <label>은행 이름</label>
+          <input name="bank_name" value="{{ s.get('bank_name','') }}" placeholder="예: 국민은행">
+        </div>
+        <div class="form-group">
+          <label>계좌번호</label>
+          <input name="bank_account" value="{{ s.get('bank_account','') }}" placeholder="123-456-789012">
+        </div>
+        <div class="form-group">
+          <label>예금주</label>
+          <input name="bank_holder" value="{{ s.get('bank_holder','') }}" placeholder="홍길동">
+        </div>
+        <button class="btn btn-primary">💾 계좌 저장</button>
+      </form>
+
+      <!-- 자동충전 설정 -->
+      <form method="POST" action="/api/settings/charge/{{ g.id }}" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px">💰 자동충전 설정</div>
+        <div class="form-group">
+          <label>자동충전</label>
+          <select name="auto_charge">
+            <option value="1" {% if s.get('auto_charge', True) %}selected{% endif %}>✅ 활성화</option>
+            <option value="0" {% if not s.get('auto_charge', True) %}selected{% endif %}>❌ 비활성화</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>최소 충전 금액 (원)</label>
+          <input name="min_charge" type="number" value="{{ s.get('min_charge', 1000) }}" min="0">
+        </div>
+        <div class="form-group">
+          <label>최대 충전 금액 (원, 0=제한없음)</label>
+          <input name="max_charge" type="number" value="{{ s.get('max_charge', 0) }}" min="0">
+        </div>
+        <div class="form-group">
+          <label>관리자 알림 채널 ID</label>
+          <input name="admin_channel_id" value="{{ s.get('admin_channel_id','') }}" placeholder="채널 ID">
+        </div>
+        <button class="btn btn-primary">💾 충전 설정 저장</button>
+      </form>
+
+    </div>
+
+    <!-- 현재 설정 미리보기 -->
+    {% if s.get('bank_name') %}
+    <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">📋 현재 설정</div>
+      <div style="font-size:13px">
+        🏦 <strong>{{ s.get('bank_name','미설정') }}</strong>
+        {{ s.get('bank_account','') }}
+        ({{ s.get('bank_holder','') }})
+        &nbsp;|&nbsp;
+        자동충전: {% if s.get('auto_charge', True) %}<span class="badge badge-green">ON</span>{% else %}<span class="badge badge-red">OFF</span>{% endif %}
+        &nbsp;|&nbsp;
+        최소: {{ "{:,}".format(s.get('min_charge', 1000)) }}원
+        {% if s.get('max_charge', 0) > 0 %}
+        / 최대: {{ "{:,}".format(s.get('max_charge', 0)) }}원
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {% if not guilds %}
+  <div class="panel">
+    <div class="empty"><div class="ico">⚙️</div><p>등록된 서버가 없습니다. 서버 관리에서 먼저 등록해주세요.</p></div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

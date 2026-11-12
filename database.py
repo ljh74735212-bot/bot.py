@@ -3,43 +3,106 @@ import os
 import time
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data.json")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+MASTER_DB_PATH = os.path.join(DATA_DIR, "master.json")
 
-def load_db() -> dict:
-    if not os.path.exists(DB_PATH):
-        initial = {"users": {}, "products": {}, "pending_charges": {}, "settings": {}}
-        save_db(initial)
+os.makedirs(DATA_DIR, exist_ok=True)
+
+# ── 마스터 DB (서버 구독 관리) ─────────────────────
+def load_master() -> dict:
+    if not os.path.exists(MASTER_DB_PATH):
+        initial = {"guilds": {}}
+        save_master(initial)
         return initial
-    data = json.load(open(DB_PATH, "r", encoding="utf-8"))
-    if "settings" not in data:
-        data["settings"] = {}
-        save_db(data)
-    return data
+    return json.load(open(MASTER_DB_PATH, "r", encoding="utf-8"))
 
-# ── 설정 ──────────────────────────────────────────
-def get_settings() -> dict:
-    return load_db().get("settings", {})
-
-def save_settings(settings: dict):
-    db = load_db()
-    db["settings"] = settings
-    save_db(db)
-
-def get_bank_info() -> dict:
-    s = get_settings()
-    return {
-        "name": s.get("bank_name", os.getenv("BANK_NAME", "은행명 미설정")),
-        "account": s.get("bank_account", os.getenv("BANK_ACCOUNT", "계좌번호 미설정")),
-        "holder": s.get("bank_holder", os.getenv("BANK_HOLDER", "예금주 미설정")),
-    }
-
-def save_db(data: dict):
-    with open(DB_PATH, "w", encoding="utf-8") as f:
+def save_master(data: dict):
+    with open(MASTER_DB_PATH, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
+def get_guild_info(guild_id: str) -> dict | None:
+    return load_master()["guilds"].get(str(guild_id))
+
+def register_guild(guild_id: str, guild_name: str, expires_at: str, admin_role_id: str = None):
+    master = load_master()
+    master["guilds"][str(guild_id)] = {
+        "guild_id": str(guild_id),
+        "guild_name": guild_name,
+        "expires_at": expires_at,
+        "admin_role_id": admin_role_id,
+        "registered_at": datetime.now().isoformat(),
+        "active": True,
+    }
+    save_master(master)
+
+def deactivate_guild(guild_id: str):
+    master = load_master()
+    if str(guild_id) in master["guilds"]:
+        master["guilds"][str(guild_id)]["active"] = False
+        save_master(master)
+
+def is_guild_active(guild_id: str) -> bool:
+    info = get_guild_info(str(guild_id))
+    if not info:
+        return False
+    if not info.get("active", True):
+        return False
+    expires = info.get("expires_at")
+    if expires and expires != "permanent":
+        from datetime import datetime
+        try:
+            if datetime.fromisoformat(expires) < datetime.now():
+                return False
+        except:
+            pass
+    return True
+
+def get_all_guilds() -> list:
+    return [
+        {"id": gid, **g}
+        for gid, g in load_master()["guilds"].items()
+    ]
+
+# ── 서버별 DB ──────────────────────────────────────
+def guild_db_path(guild_id: str) -> str:
+    return os.path.join(DATA_DIR, f"guild_{guild_id}.json")
+
+def load_db(guild_id: str) -> dict:
+    path = guild_db_path(str(guild_id))
+    if not os.path.exists(path):
+        initial = {"users": {}, "products": {}, "pending_charges": {}, "settings": {}}
+        save_db(guild_id, initial)
+        return initial
+    data = json.load(open(path, "r", encoding="utf-8"))
+    if "settings" not in data:
+        data["settings"] = {}
+        save_db(guild_id, data)
+    return data
+
+def save_db(guild_id: str, data: dict):
+    with open(guild_db_path(str(guild_id)), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+# ── 설정 ──────────────────────────────────────────
+def get_settings(guild_id: str) -> dict:
+    return load_db(guild_id).get("settings", {})
+
+def save_settings(guild_id: str, settings: dict):
+    db = load_db(guild_id)
+    db["settings"] = settings
+    save_db(guild_id, db)
+
+def get_bank_info(guild_id: str) -> dict:
+    s = get_settings(guild_id)
+    return {
+        "name": s.get("bank_name", "은행명 미설정"),
+        "account": s.get("bank_account", "계좌번호 미설정"),
+        "holder": s.get("bank_holder", "예금주 미설정"),
+    }
+
 # ── 유저 ──────────────────────────────────────────
-def get_user(user_id: str, username: str = "알 수 없음") -> dict:
-    db = load_db()
+def get_user(guild_id: str, user_id: str, username: str = "알 수 없음") -> dict:
+    db = load_db(guild_id)
     uid = str(user_id)
     if uid not in db["users"]:
         db["users"][uid] = {
@@ -50,45 +113,44 @@ def get_user(user_id: str, username: str = "알 수 없음") -> dict:
             "grade": "일반",
             "purchases": [],
         }
-        save_db(db)
+        save_db(guild_id, db)
     return db["users"][uid]
 
-def save_user(user_id: str, user_data: dict):
-    db = load_db()
+def save_user(guild_id: str, user_id: str, user_data: dict):
+    db = load_db(guild_id)
     db["users"][str(user_id)] = user_data
-    save_db(db)
+    save_db(guild_id, db)
 
 # ── 상품 ──────────────────────────────────────────
-def get_products() -> dict:
-    return load_db()["products"]
+def get_products(guild_id: str) -> dict:
+    return load_db(guild_id)["products"]
 
-def get_product(product_id: str) -> dict | None:
-    return load_db()["products"].get(str(product_id))
+def get_product(guild_id: str, product_id: str) -> dict | None:
+    return load_db(guild_id)["products"].get(str(product_id))
 
-def save_product(product_id: str, product_data: dict):
-    db = load_db()
+def save_product(guild_id: str, product_id: str, product_data: dict):
+    db = load_db(guild_id)
     db["products"][str(product_id)] = product_data
-    save_db(db)
+    save_db(guild_id, db)
 
-def delete_product(product_id: str):
-    db = load_db()
+def delete_product(guild_id: str, product_id: str):
+    db = load_db(guild_id)
     db["products"].pop(str(product_id), None)
-    save_db(db)
+    save_db(guild_id, db)
 
-def get_categories() -> list:
-    products = get_products()
-    return list({p["category"] for p in products.values()})
+def get_categories(guild_id: str) -> list:
+    return list({p["category"] for p in get_products(guild_id).values()})
 
-def get_products_by_category(category: str) -> list:
+def get_products_by_category(guild_id: str, category: str) -> list:
     return [
         {"id": pid, **p}
-        for pid, p in get_products().items()
+        for pid, p in get_products(guild_id).items()
         if p["category"] == category
     ]
 
 # ── 충전 ──────────────────────────────────────────
-def add_pending_charge(user_id: str, amount: int, depositor_name: str) -> str:
-    db = load_db()
+def add_pending_charge(guild_id: str, user_id: str, amount: int, depositor_name: str) -> str:
+    db = load_db(guild_id)
     charge_id = f"CHG-{int(time.time() * 1000)}"
     db["pending_charges"][charge_id] = {
         "user_id": str(user_id),
@@ -97,19 +159,19 @@ def add_pending_charge(user_id: str, amount: int, depositor_name: str) -> str:
         "created_at": datetime.now().isoformat(),
         "status": "pending",
     }
-    save_db(db)
+    save_db(guild_id, db)
     return charge_id
 
-def get_pending_charges() -> list:
-    db = load_db()
+def get_pending_charges(guild_id: str) -> list:
+    db = load_db(guild_id)
     return [
         {"id": cid, **c}
         for cid, c in db["pending_charges"].items()
         if c["status"] == "pending"
     ]
 
-def approve_charge(charge_id: str) -> dict | None:
-    db = load_db()
+def approve_charge(guild_id: str, charge_id: str) -> dict | None:
+    db = load_db(guild_id)
     charge = db["pending_charges"].get(charge_id)
     if not charge:
         return None
@@ -117,21 +179,21 @@ def approve_charge(charge_id: str) -> dict | None:
     uid = charge["user_id"]
     if uid in db["users"]:
         db["users"][uid]["balance"] += charge["amount"]
-    save_db(db)
+    save_db(guild_id, db)
     return charge
 
-def reject_charge(charge_id: str) -> dict | None:
-    db = load_db()
+def reject_charge(guild_id: str, charge_id: str) -> dict | None:
+    db = load_db(guild_id)
     charge = db["pending_charges"].get(charge_id)
     if not charge:
         return None
     charge["status"] = "rejected"
-    save_db(db)
+    save_db(guild_id, db)
     return charge
 
 # ── 구매 ──────────────────────────────────────────
-def purchase_product(user_id: str, product_id: str) -> dict:
-    db = load_db()
+def purchase_product(guild_id: str, user_id: str, product_id: str) -> dict:
+    db = load_db(guild_id)
     uid = str(user_id)
     user = db["users"].get(uid)
     product = db["products"].get(str(product_id))
@@ -149,7 +211,6 @@ def purchase_product(user_id: str, product_id: str) -> dict:
     if product.get("stock", -1) > 0:
         product["stock"] -= 1
 
-    # 등급 업데이트
     tp = user["total_purchase"]
     if tp >= 50000:
         user["grade"] = "VIP"
@@ -166,5 +227,5 @@ def purchase_product(user_id: str, product_id: str) -> dict:
         "purchased_at": datetime.now().isoformat(),
     })
 
-    save_db(db)
+    save_db(guild_id, db)
     return {"success": True, "product": product, "content": product["content"]}

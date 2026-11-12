@@ -154,7 +154,7 @@
   <nav class="sidebar">
     <div class="sidebar-logo">
       <div class="icon">⚡</div>
-      <div class="name">NIGHT Service</div>
+      <div class="name">Premium Seller</div>
     </div>
     <div class="sidebar-nav">
       <div class="nav-label">메뉴</div>
@@ -182,7 +182,10 @@
       <a href="/" class="nav-item">
         <span class="ico">📋</span> 로그
       </a>
-      <a href="/" class="nav-item">
+      <a href="/guilds" class="nav-item {% if page=='guilds' %}active{% endif %}">
+        <span class="ico">🏢</span> 서버 관리
+      </a>
+      <a href="/settings" class="nav-item {% if page=='settings' %}active{% endif %}">
         <span class="ico">⚙️</span> 설정
       </a>
     </div>
