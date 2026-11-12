@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from sms_server import start_sms_server
 from dashboard.server import start_dashboard_async
+import bankapi
 
 load_dotenv()
 
@@ -13,15 +14,22 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+_bg_started = False
+
 @bot.event
 async def on_ready():
+    global _bg_started
     print(f"✅ 봇 로그인 완료: {bot.user}")
     try:
         synced = await bot.tree.sync()
         print(f"✅ 슬래시 커맨드 {len(synced)}개 등록 완료")
     except Exception as e:
         print(f"❌ 커맨드 등록 실패: {e}")
+    if _bg_started:
+        return  # 재연결 시 on_ready 가 다시 불려도 백그라운드 작업은 한 번만 시작
+    _bg_started = True
     asyncio.create_task(start_dashboard_async(bot))
+    asyncio.create_task(bankapi.poll_loop(bot))  # 웹에서 설정한 계좌조회API 자동충전
     if not os.getenv("PORT"):
         # $PORT가 없을 때(로컬/포트가 여러 개 열리는 호스팅)만 별도 SMS 서버 실행
         # Render에서는 대시보드의 /sms 로 같은 포트에서 받음

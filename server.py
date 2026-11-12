@@ -13,6 +13,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 import database as db
 import sms_server
+import bankapi
 
 app = FastAPI(docs_url=None, redoc_url=None)
 
@@ -295,11 +296,50 @@ async def delete_event(gid: str, eid: str, _=Depends(check_auth)):
     return back("/events", msg="Event deleted.")
 
 
+def bankapi_view(cfg: dict) -> dict:
+    """템플릿에 넘길 값 (비밀번호·키는 절대 내려보내지 않음)"""
+    acc = cfg.get("account_number", "")
+    return {
+        "enabled": bool(cfg.get("enabled")), "bank_code": cfg.get("bank_code", "NH"),
+        "account_masked": ("•" * max(len(acc) - 4, 0) + acc[-4:]) if acc else "",
+        "has_keys": bool(cfg.get("api_key") and cfg.get("secret_key")),
+        "has_pw": bool(cfg.get("account_password")), "has_birth": bool(cfg.get("resident_number")),
+        "interval_min": cfg.get("interval_min", 6),
+        "last_poll": cfg.get("last_poll", ""), "last_status": cfg.get("last_status", ""),
+        "ready": bankapi.is_configured(cfg),
+    }
+
+
+def mask_key(key: str) -> str:
+    if not key:
+        return ""
+    return (key[:2] + "•" * max(len(key) - 6, 4) + key[-4:]) if len(key) > 8 else "•" * len(key)
+
+
+@app.get("/sms-log", response_class=HTMLResponse)
+async def sms_log_page(request: Request, _=Depends(check_auth)):
+    names = {g["id"]: g["guild_name"] for g in db.get_all_guilds()}
+    pending = [c for c in get_stats()["pending_charges"]]
+    for c in pending:
+        c["guild_name"] = names.get(c["guild_id"], c["guild_id"])
+    return render(request, "sms_log.html", log=db.get_sms_log(100), pending=pending, names=names, page="sms")
+
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request, _=Depends(check_auth)):
     guilds = db.get_all_guilds()
     settings_map = {g["id"]: db.get_settings(g["id"]) for g in guilds}
-    return render(request, "settings.html", guilds=guilds, settings_map=settings_map, page="settings")
+    key = db.get_sms_secret()
+    key_source = "web" if db.get_config().get("sms_webhook_secret") else ("env" if key else "none")
+    masked = (key[:2] + "•" * max(len(key) - 6, 4) + key[-4:]) if len(key) > 8 else ("•" * len(key))
+    webhook_url = str(request.base_url).rstrip("/") + "/sms"
+    return render(request, "settings.html", guilds=guilds, settings_map=settings_map, page="settings",
+                  key_set=bool(key), key_masked=masked, key_source=key_source, webhook_url=webhook_url,
+                  new_key=request.query_params.get("new_key"),
+                  bankapi_map={g["id"]: bankapi_view(settings_map[g["id"]].get("bankapi", {})) for g in guilds},
+                  banks=bankapi.BANKS,
+                  guild_keys={g["id"]: mask_key(settings_map[g["id"]].get("sms_key", "")) for g in guilds},
+                  new_key_gid=request.query_params.get("new_key_gid"))
 
 
 # ── actions ───────────────────────────────────────
@@ -416,32 +456,165 @@ async def save_charge(gid: str, request: Request, _=Depends(check_auth)):
     return back("/settings", msg="Charge settings saved.")
 
 
+@app.post("/api/settings/apikey")
+async def save_apikey(request: Request, _=Depends(check_auth)):
+    """자동충전 API 키(SMS 웹훅 시크릿) 저장 / 자동 생성 / 삭제"""
+    form = await request.form()
+    action = form.get("action", "save")
+    if action == "generate":
+        key = secrets.token_urlsafe(24)
+        db.set_sms_secret(key)
+        # 생성 직후 1회만 전체 키를 보여줌 (이후엔 마스킹)
+        return RedirectResponse("/settings?msg=" + quote_plus("New API key generated.") + "&new_key=" + quote_plus(key),
+                                status_code=303)
+    if action == "clear":
+        db.set_sms_secret("")
+        return back("/settings", msg="Web API key removed (falls back to the SMS_WEBHOOK_SECRET env var, if any).")
+    key = str(form.get("api_key", "")).strip()
+    if len(key) < 8:
+        return back("/settings", err="API key must be at least 8 characters.")
+    if any(c.isspace() for c in key):
+        return back("/settings", err="API key cannot contain spaces.")
+    db.set_sms_secret(key)
+    return back("/settings", msg="API key saved. Takes effect immediately.")
+
+
+@app.post("/api/settings/guildkey/{gid}")
+async def save_guild_key(gid: str, request: Request, _=Depends(check_auth)):
+    """서버별 자동충전 API 키: 이 키로 들어온 문자는 이 서버만 처리"""
+    if not guild_ok(gid):
+        return back("/settings", err="Server not found.")
+    form = await request.form()
+    action = form.get("action", "save")
+    if action == "generate":
+        key = secrets.token_urlsafe(24)
+        db.set_guild_sms_key(gid, key)
+        return RedirectResponse("/settings?msg=" + quote_plus("Server API key generated.")
+                                + "&new_key=" + quote_plus(key) + "&new_key_gid=" + quote_plus(gid), status_code=303)
+    if action == "clear":
+        db.set_guild_sms_key(gid, "")
+        return back("/settings", msg="Server API key removed.")
+    key = str(form.get("api_key", "")).strip()
+    if len(key) < 8 or any(c.isspace() for c in key):
+        return back("/settings", err="API key must be at least 8 characters, no spaces.")
+    if key == db.get_sms_secret() or (db.find_guild_by_sms_key(key) not in (None, gid)):
+        return back("/settings", err="This key is already used elsewhere. Use a different key.")
+    db.set_guild_sms_key(gid, key)
+    return back("/settings", msg="Server API key saved.")
+
+
+@app.post("/api/settings/bankapi/{gid}")
+async def save_bankapi(gid: str, request: Request, _=Depends(check_auth)):
+    """계좌조회API 자동충전 설정 저장. 비밀 값(키·비밀번호·생년월일)은 비워두면 기존 값 유지"""
+    if not guild_ok(gid):
+        return back("/settings", err="Server not found.")
+    form = await request.form()
+    s = db.get_settings(gid)
+    cfg = s.get("bankapi", {})
+
+    def keep(name):  # 입력이 비어 있으면 기존 값 유지
+        v = str(form.get(name, "")).strip()
+        return v or cfg.get(name, "")
+
+    bank = str(form.get("bank_code", "NH"))
+    if bank not in bankapi.BANKS:
+        return back("/settings", err="Unsupported bank. (NH / KB / WR / IBK)")
+    acc = "".join(ch for ch in str(form.get("account_number", "")) if ch.isdigit()) or cfg.get("account_number", "")
+    pw, birth = keep("account_password"), keep("resident_number")
+    if pw and not (pw.isdigit() and len(pw) == 4):
+        return back("/settings", err="Account password must be 4 digits.")
+    if birth and not (birth.isdigit() and len(birth) == 6):
+        return back("/settings", err="Birth date must be 6 digits (YYMMDD).")
+    cfg.update({
+        "enabled": form.get("enabled") == "1", "bank_code": bank, "account_number": acc,
+        "api_key": keep("api_key"), "secret_key": keep("secret_key"),
+        "account_password": pw, "resident_number": birth,
+        "interval_min": max(bankapi.MIN_INTERVAL_MIN, min(60, to_int(form.get("interval_min"), 6))),
+    })
+    s["bankapi"] = cfg
+    db.save_settings(gid, s)
+    if cfg["enabled"] and not bankapi.is_configured(cfg):
+        return back("/settings", err="Saved, but some fields are still empty — auto top-up will not run until all are filled.")
+    return back("/settings", msg="Bank API settings saved.")
+
+
+@app.post("/api/settings/bankapi-check/{gid}")
+async def check_bankapi(gid: str, request: Request, _=Depends(check_auth)):
+    """지금 바로 입금내역 조회 (연결 테스트 겸용). 같은 계좌 5분 1회 제한에 포함됨"""
+    if not guild_ok(gid):
+        return back("/settings", err="Server not found.")
+    bot = getattr(request.app.state, "bot", None)
+    msg = await bankapi.check_guild(bot, gid, force=True)
+    bankapi._last_poll[gid] = __import__("time").monotonic()
+    return back("/settings", err=msg) if msg.startswith(("조회 실패", "설정이")) else back("/settings", msg="Checked: " + msg)
+
+
+@app.post("/api/sms/test")
+async def sms_test(request: Request, _=Depends(check_auth)):
+    """알림/문자 내용을 붙여넣어 인식 결과 확인 (충전은 하지 않음)"""
+    form = await request.form()
+    text = str(form.get("message", "")).strip()
+    if not text:
+        return back("/sms-log", err="Paste a notification / SMS text first.")
+    parsed = sms_server.parse_sms(text)
+    if not parsed:
+        return back("/sms-log", err="Not recognized as a deposit (no deposit keyword, or it looks like an outgoing transfer).")
+    hits = []
+    for g in db.get_all_guilds():
+        if db.is_guild_active(g["id"]):
+            c = sms_server.find_charge_in_guild(g["id"], parsed["depositor_name"], parsed["amount"], text)
+            if c:
+                hits.append(f"{g['guild_name']} · {c['depositor_name']} · ₩{c['amount']:,}")
+    res = f"Recognized: ₩{parsed['amount']:,} / name: {parsed['depositor_name']} / {parsed['bank']}. "
+    res += ("Would credit → " + "; ".join(hits)) if hits else "No matching pending request right now (nothing credited)."
+    return back("/sms-log", msg=res)
+
+
+@app.post("/api/sms/link/{log_id}")
+async def sms_link(log_id: str, request: Request, _=Depends(check_auth)):
+    """매칭 실패한 입금 문자를 대기 중인 충전 요청에 수동으로 연결 → 승인"""
+    entry = db.get_sms_log_entry(log_id)
+    if not entry:
+        return back("/sms-log", err="Log entry not found.")
+    if entry.get("status") != "no_match":
+        return back("/sms-log", err="This entry is already handled.")
+    form = await request.form()
+    try:
+        gid, cid = str(form.get("charge", "")).split("|", 1)
+    except ValueError:
+        return back("/sms-log", err="Select a charge request.")
+    if not guild_ok(gid):
+        return back("/sms-log", err="Server not found.")
+    charge = db.approve_charge(gid, cid)
+    if charge is None:
+        return back("/sms-log", err="Charge not found or already processed.")
+    db.update_sms_log(log_id, status="matched",
+                      matched=[{"guild_id": gid, "charge_id": cid, "user_id": charge["user_id"], "manual": True}])
+    bot = getattr(request.app.state, "bot", None)
+    if bot:
+        try:
+            await sms_server.send_dm(bot, charge["user_id"], charge["amount"], entry.get("bank", "수동"), charge)
+        except Exception as e:
+            print(f"DM 실패: {e}")
+    note = f" Event bonus: +₩{charge['bonus']:,}." if charge.get("bonus") else ""
+    return back("/sms-log", msg="Linked and credited ₩{:,}.".format(charge["amount"]) + note)
+
+
 @app.post("/sms")
 async def sms_endpoint(request: Request):
     """입금 문자 수신 (Render처럼 포트가 하나뿐인 호스팅용). 인증: x-webhook-secret 헤더"""
-    expected = os.getenv("SMS_WEBHOOK_SECRET", "")
-    if not expected:
-        return JSONResponse({"error": "SMS_WEBHOOK_SECRET not configured"}, status_code=503)
-    if not secrets.compare_digest(request.headers.get("x-webhook-secret", ""), expected):
+    if not sms_server.keys_configured():
+        return JSONResponse({"error": "API key not configured"}, status_code=503)
+    ok, only_guild = sms_server.authenticate(request.headers.get("x-webhook-secret", ""))
+    if not ok:
         return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
-    message = ""
-    try:
-        form = await request.form()
-        message = form.get("message") or form.get("text") or form.get("sms") or ""
-    except Exception:
-        pass
-    if not message:
-        try:
-            body = await request.json()
-            message = body.get("message") or body.get("text") or body.get("sms") or ""
-        except Exception:
-            pass
+    message = sms_server.extract_message(await request.body(), request.headers.get("content-type", ""))
     if not message:
         return JSONResponse({"error": "No message"}, status_code=400)
 
     bot = getattr(request.app.state, "bot", None)
-    return JSONResponse(await sms_server.handle_sms(bot, str(message)))
+    return JSONResponse(await sms_server.handle_sms(bot, str(message), only_guild))
 
 
 @app.get("/health")

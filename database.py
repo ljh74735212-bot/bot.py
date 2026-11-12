@@ -58,6 +58,83 @@ def is_guild_active(guild_id: str) -> bool:
             pass
     return True
 
+# ── 전역 설정 (자동충전 API 키 등, 웹 대시보드에서 변경) ──
+def get_config() -> dict:
+    return load_master().get("config", {})
+
+def save_config(config: dict):
+    master = load_master()
+    master["config"] = config
+    save_master(master)
+
+def get_sms_secret() -> str:
+    """자동충전(SMS 웹훅) API 키. 웹에서 설정한 값 우선, 없으면 환경변수 SMS_WEBHOOK_SECRET."""
+    return get_config().get("sms_webhook_secret") or os.getenv("SMS_WEBHOOK_SECRET", "")
+
+def set_sms_secret(value: str):
+    cfg = get_config()
+    if value:
+        cfg["sms_webhook_secret"] = value
+    else:
+        cfg.pop("sms_webhook_secret", None)   # 삭제 → 환경변수 값으로 복귀
+    save_config(cfg)
+
+# ── 서버별 자동충전 API 키 (웹에서 설정) ──
+def set_guild_sms_key(guild_id: str, key: str):
+    s = get_settings(guild_id)
+    if key:
+        s["sms_key"] = key
+    else:
+        s.pop("sms_key", None)
+    save_settings(guild_id, s)
+
+def find_guild_by_sms_key(key: str) -> str | None:
+    """서버별 키와 일치하는 서버 ID (없으면 None)"""
+    if not key:
+        return None
+    for g in get_all_guilds():
+        k = get_settings(g["id"]).get("sms_key")
+        if k and secrets.compare_digest(str(k), str(key)):
+            return g["id"]
+    return None
+
+# ── SMS 수신 로그 ──────────────────────────────────
+SMS_LOG_PATH = os.path.join(DATA_DIR, "sms_log.json")
+SMS_LOG_MAX = 200
+
+def _load_sms_log() -> list:
+    if not os.path.exists(SMS_LOG_PATH):
+        return []
+    try:
+        return json.load(open(SMS_LOG_PATH, "r", encoding="utf-8"))
+    except Exception:
+        return []
+
+def add_sms_log(entry: dict) -> str:
+    log = _load_sms_log()
+    entry["id"] = f"SMS-{int(time.time() * 1000)}-{secrets.token_hex(2)}"
+    entry["ts"] = datetime.now().isoformat(timespec="seconds")
+    log.insert(0, entry)
+    with open(SMS_LOG_PATH, "w", encoding="utf-8") as f:
+        json.dump(log[:SMS_LOG_MAX], f, ensure_ascii=False, indent=2)
+    return entry["id"]
+
+def get_sms_log(limit: int = 100) -> list:
+    return _load_sms_log()[:limit]
+
+def get_sms_log_entry(log_id: str) -> dict | None:
+    return next((e for e in _load_sms_log() if e.get("id") == log_id), None)
+
+def update_sms_log(log_id: str, **fields) -> bool:
+    log = _load_sms_log()
+    for e in log:
+        if e.get("id") == log_id:
+            e.update(fields)
+            with open(SMS_LOG_PATH, "w", encoding="utf-8") as f:
+                json.dump(log, f, ensure_ascii=False, indent=2)
+            return True
+    return False
+
 def get_all_guilds() -> list:
     return [
         {"id": gid, **g}

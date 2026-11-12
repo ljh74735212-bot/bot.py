@@ -2,6 +2,47 @@
 {% block content %}
 <div class="page-title">⚙️ Settings</div>
 
+<div class="panel" style="margin-bottom:16px">
+  <div class="panel-title">🔑 Auto Top-up API Key (SMS webhook)</div>
+
+  {% if new_key %}
+  <div style="padding:12px;margin-bottom:12px;background:var(--bg);border:1px solid var(--success);border-radius:8px">
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">⚠️ Copy this now — it is shown only once</div>
+    <code style="font-size:14px;word-break:break-all;user-select:all">{{ new_key }}</code>
+  </div>
+  {% endif %}
+
+  <div style="font-size:13px;margin-bottom:12px">
+    Status:
+    {% if key_set %}<span class="badge badge-green">Set</span> <code>{{ key_masked }}</code>
+      <span style="color:var(--muted);font-size:11px">({{ 'set on website' if key_source == 'web' else 'from SMS_WEBHOOK_SECRET env var' }})</span>
+    {% else %}<span class="badge badge-red">Not set</span> <span style="color:var(--muted);font-size:11px">— auto top-up requests are rejected until a key is set</span>{% endif %}
+  </div>
+
+  <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.7">
+    SMS forwarder app setup → URL: <code style="user-select:all">{{ webhook_url }}</code> · Method: POST<br>
+    Header: <code>x-webhook-secret: (your API key)</code> · Body: <code>message=(SMS text)</code>
+  </div>
+
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+    <form method="POST" action="/api/settings/apikey" style="display:flex;gap:8px;flex:1;min-width:260px;align-items:flex-end">
+      <input type="hidden" name="action" value="save">
+      <div class="form-group" style="flex:1"><label>Set API key manually</label><input name="api_key" type="password" autocomplete="off" placeholder="min. 8 characters"></div>
+      <button type="submit" class="btn btn-primary">💾 Save</button>
+    </form>
+    <form method="POST" action="/api/settings/apikey" onsubmit="return confirm('Generate a new key? The old key stops working immediately — update your SMS forwarder app.')">
+      <input type="hidden" name="action" value="generate">
+      <button type="submit" class="btn btn-success">🎲 Generate random key</button>
+    </form>
+    {% if key_source == 'web' %}
+    <form method="POST" action="/api/settings/apikey" onsubmit="return confirm('Remove the key set on the website?')">
+      <input type="hidden" name="action" value="clear">
+      <button type="submit" class="btn btn-danger">🗑 Remove</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
 <div style="display:flex;flex-direction:column;gap:16px">
   {% for g in guilds %}
   {% set s = settings_map[g.id] %}
@@ -34,6 +75,70 @@
         <div class="form-group"><label>Admin notification channel ID</label><input name="admin_channel_id" value="{{ s.get('admin_channel_id','') }}" placeholder="Channel ID"></div>
         <button type="submit" class="btn btn-primary">💾 Save Top-up Settings</button>
       </form>
+    </div>
+
+
+    <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:8px">🔑 Server API key <span style="color:var(--muted);font-weight:400">— SMS sent with this key only credits this server</span></div>
+      {% if new_key and new_key_gid == g.id %}
+      <div style="padding:10px;margin-bottom:10px;border:1px solid var(--success);border-radius:8px">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:4px">⚠️ Copy this now — shown only once</div>
+        <code style="font-size:13px;word-break:break-all;user-select:all">{{ new_key }}</code>
+      </div>
+      {% endif %}
+      <div style="font-size:13px;margin-bottom:10px">
+        {% if guild_keys[g.id] %}<span class="badge badge-green">Set</span> <code>{{ guild_keys[g.id] }}</code>
+        {% else %}<span class="badge badge-red">Not set</span> <span style="color:var(--muted);font-size:11px">(the global key above still works for all servers)</span>{% endif %}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <form method="POST" action="/api/settings/guildkey/{{ g.id }}" style="display:flex;gap:8px;flex:1;min-width:240px;align-items:flex-end">
+          <input type="hidden" name="action" value="save">
+          <div class="form-group" style="flex:1"><input name="api_key" type="password" autocomplete="off" placeholder="Set key manually (min. 8 chars)"></div>
+          <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
+        </form>
+        <form method="POST" action="/api/settings/guildkey/{{ g.id }}" onsubmit="return confirm('Generate a new key for this server? The old one stops working.')">
+          <input type="hidden" name="action" value="generate"><button type="submit" class="btn btn-success btn-sm">🎲 Generate</button>
+        </form>
+        {% if guild_keys[g.id] %}
+        <form method="POST" action="/api/settings/guildkey/{{ g.id }}" onsubmit="return confirm('Remove this server key?')">
+          <input type="hidden" name="action" value="clear"><button type="submit" class="btn btn-danger btn-sm">🗑</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+
+    {% set ba = bankapi_map[g.id] %}
+    <div style="margin-top:14px;padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px">🏦 Auto Top-up via Bank API <span style="color:var(--muted);font-weight:400">(bankapi.co.kr)</span></div>
+      <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:10px">
+        Issue an API Key at bankapi.co.kr, then enter it with your account info. The bot checks deposits and credits matching requests automatically.<br>
+        ⚠️ Needs the account number, <strong>4-digit account password</strong> and birth date — they are sent to bankapi.co.kr on every check and stored in this bot's data folder. Quick-inquiry (빠른조회) must be registered at your bank.<br>
+        ⚠️ Only works from a <strong>Korean IP</strong> (overseas hosts such as Render are blocked) · same account can be checked once per 5 min · NH / KB / WR / IBK only.
+      </div>
+      <div style="font-size:12px;margin-bottom:10px">
+        {% if ba.ready %}<span class="badge badge-green">Configured</span>{% else %}<span class="badge badge-red">Incomplete</span>{% endif %}
+        {% if ba.enabled %}<span class="badge badge-green">ON</span>{% else %}<span class="badge badge-red">OFF</span>{% endif %}
+        {% if ba.last_poll %}<span style="color:var(--muted);font-size:11px"> · last check {{ ba.last_poll }} — {{ ba.last_status }}</span>{% endif %}
+      </div>
+      <form method="POST" action="/api/settings/bankapi/{{ g.id }}" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="form-group"><label>Enabled</label>
+          <select name="enabled"><option value="1" {% if ba.enabled %}selected{% endif %}>✅ On</option><option value="0" {% if not ba.enabled %}selected{% endif %}>❌ Off</option></select></div>
+        <div class="form-group"><label>Bank</label>
+          <select name="bank_code">{% for code, nm in banks.items() %}<option value="{{ code }}" {% if ba.bank_code == code %}selected{% endif %}>{{ nm }}</option>{% endfor %}</select></div>
+        <div class="form-group"><label>API Key</label><input name="api_key" type="password" autocomplete="off" placeholder="{{ '•••• saved (leave blank to keep)' if ba.has_keys else 'API Key' }}"></div>
+        <div class="form-group"><label>Secret Key</label><input name="secret_key" type="password" autocomplete="off" placeholder="{{ '•••• saved (leave blank to keep)' if ba.has_keys else 'Secret Key' }}"></div>
+        <div class="form-group"><label>Account number (no hyphens)</label><input name="account_number" autocomplete="off" placeholder="{{ ba.account_masked or '12345678901234' }}"></div>
+        <div class="form-group"><label>Check interval (min, 5–60)</label><input name="interval_min" type="number" min="5" max="60" value="{{ ba.interval_min }}"></div>
+        <div class="form-group"><label>Account password (4 digits)</label><input name="account_password" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="{{ '•••• saved (leave blank to keep)' if ba.has_pw else '1234' }}"></div>
+        <div class="form-group"><label>Birth date (YYMMDD)</label><input name="resident_number" type="password" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="{{ '•••••• saved (leave blank to keep)' if ba.has_birth else '900101' }}"></div>
+        <button type="submit" class="btn btn-primary" style="grid-column:1/-1">💾 Save Bank API settings</button>
+      </form>
+      {% if ba.ready %}
+      <form method="POST" action="/api/settings/bankapi-check/{{ g.id }}" style="margin-top:8px">
+        <button type="submit" class="btn btn-success btn-sm">🔄 Check deposits now</button>
+      </form>
+      {% endif %}
     </div>
 
     {% if s.get('bank_name') %}
