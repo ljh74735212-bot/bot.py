@@ -103,7 +103,7 @@
 
 <script>
 const labels = {{ stats.chart.labels | tojson }};
-const values = {{ stats.chart_values | tojson }};
+const values = {{ stats.chart.revenue | tojson }};
 let currentRange = 7;
 
 const ctx = document.getElementById('salesChart').getContext('2d');
