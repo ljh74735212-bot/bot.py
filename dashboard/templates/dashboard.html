@@ -102,7 +102,7 @@
 {% endif %}
 
 <script>
-const labels = {{ stats.chart_labels | tojson }};
+const labels = {{ stats.chart.labels | tojson }};
 const values = {{ stats.chart_values | tojson }};
 let currentRange = 7;
 
